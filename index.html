@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat with Dominic Toretto</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.3/dist/tailwind.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a, #333333);
+      color: #ffffff;
+    }
+    .chat-bubble {
+      max-width: 80%;
+      word-wrap: break-word;
+      border-radius: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      transition: transform 0.2s ease-in-out;
+    }
+    .chat-bubble:hover {
+      transform: translateY(-2px);
+    }
+    .user-bubble {
+      background: linear-gradient(135deg, #4a5568, #2d3748);
+      color: white;
+      align-self: flex-end;
+    }
+    .bot-bubble {
+      background: #2d3748;
+      color: white;
+      align-self: flex-start;
+    }
+    .input-container {
+      background: rgba(45, 55, 72, 0.9);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .typing-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background: #4a5568;
+      border-radius: 50%;
+      animation: typing 1s infinite;
+    }
+    @keyframes typing {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+    .image-upload {
+      display: none;
+    }
+    .image-preview {
+      max-width: 100%;
+      border-radius: 10px;
+      margin-top: 10px;
+    }
+    .neumorphic {
+      background: #2d3748;
+      box-shadow: 5px 5px 10px #1a1a1a, -5px -5px 10px #333333;
+    }
+    .neumorphic-input {
+      background: #2d3748;
+      box-shadow: inset 3px 3px 5px #1a1a1a, inset -3px -3px 5px #333333;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- Chat Container -->
+  <div class="flex-grow container mx-auto py-6 px-4">
+    <div class="h-full w-full max-w-2xl mx-auto">
+      <div id="chatbox" class="flex flex-col space-y-4 overflow-y-auto h-[70vh] p-4 rounded-lg bg-opacity-50 shadow-lg">
+        <!-- Chat messages will appear here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Input Container -->
+  <div class="sticky bottom-0 w-full input-container">
+    <div class="flex justify-center">
+      <div class="px-2 w-full max-w-2xl">
+        <div class="flex flex-col my-5">
+          <div class="flex items-center space-x-2">
+            <input
+              class="flex-grow rounded-full p-3 border-none neumorphic-input text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              id="messageInput"
+              type="text"
+              placeholder="Type your message..."
+            />
+            <label for="imageUpload" class="neumorphic hover:bg-gray-700 text-white font-bold p-3 rounded-full shadow-lg transition-transform transform hover:scale-105 cursor-pointer">
+              📷
+            </label>
+            <input
+              type="file"
+              id="imageUpload"
+              class="image-upload"
+              accept="image/*"
+            />
+            <button
+              class="neumorphic hover:bg-gray-700 text-white font-bold p-3 rounded-full shadow-lg transition-transform transform hover:scale-105"
+              id="sendButton"
+            >
+              Ask Dom!
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scroll-to-Bottom Button -->
+  <button id="scrollToBottom" class="fixed bottom-24 right-4 neumorphic hover:bg-gray-700 text-white font-bold p-3 rounded-full shadow-lg transition-transform transform hover:scale-105 hidden">
+    ↓
+  </button>
+
+  <script>
+    const chatbox = document.getElementById("chatbox");
+    const messageInput = document.getElementById("messageInput");
+    const sendButton = document.getElementById("sendButton");
+    const imageUpload = document.getElementById("imageUpload");
+    const scrollToBottomButton = document.getElementById("scrollToBottom");
+    const chatId = crypto.randomUUID();
+    let websocket = null;
+    let receiving = false;
+
+    const systemPrompt = "You are Dominic Toretto, a street racer and skilled mechanic known for your loyalty to family and friends.";
+
+    // Load chat history from localStorage
+    let chatHistory = JSON.parse(localStorage.getItem("chatHistory")) || [];
+
+    // Display chat history on page load
+    chatHistory.forEach((message) => {
+      if (message.type === "text") {
+        appendMessage(message.text, message.sender);
+      } else if (message.type === "image") {
+        appendImage(message.url, message.sender);
+      }
+    });
+
+    // Scroll to bottom of chatbox
+    function scrollToBottom() {
+      chatbox.scrollTop = chatbox.scrollHeight;
+      scrollToBottomButton.classList.add("hidden");
+    }
+
+    // Append text message to chatbox
+    function appendMessage(text, sender) {
+      const messageElement = document.createElement("div");
+      messageElement.className = `chat-bubble p-4 ${
+        sender === "user" ? "user-bubble" : "bot-bubble"
+      }`;
+      messageElement.textContent = text;
+      chatbox.appendChild(messageElement);
+      scrollToBottom();
+    }
+
+    // Append image to chatbox
+    function appendImage(url, sender) {
+      const imageContainer = document.createElement("div");
+      imageContainer.className = `chat-bubble p-2 ${
+        sender === "user" ? "user-bubble" : "bot-bubble"
+      }`;
+      const imageElement = document.createElement("img");
+      imageElement.src = url;
+      imageElement.className = "image-preview";
+      imageContainer.appendChild(imageElement);
+      chatbox.appendChild(imageContainer);
+      scrollToBottom();
+    }
+
+    // Handle image upload
+    imageUpload.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const imageUrl = e.target.result;
+          appendImage(imageUrl, "user");
+          chatHistory.push({ type: "image", url: imageUrl, sender: "user" });
+          localStorage.setItem("chatHistory", JSON.stringify(chatHistory));
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Handle WebSocket connection
+    function connectWebSocket(message, initChat) {
+      receiving = true;
+      sendButton.textContent = "Cancel";
+      const url = "wss://backend.buildpicoapps.com/api/chatbot/chat";
+      websocket = new WebSocket(url);
+
+      websocket.addEventListener("open", () => {
+        websocket.send(
+          JSON.stringify({
+            chatId: chatId,
+            appId: "federal-ever",
+            systemPrompt: systemPrompt,
+            message: initChat ? "A very short welcome message from Dominic Toretto" : message,
+          })
+        );
+      });
+
+      const messageElement = document.createElement("div");
+      messageElement.className = "chat-bubble p-4 bot-bubble";
+      chatbox.appendChild(messageElement);
+
+      websocket.onmessage = (event) => {
+        messageElement.textContent += event.data;
+        scrollToBottom();
+      };
+
+      websocket.onclose = (event) => {
+        if (event.code === 1000) {
+          receiving = false;
+          sendButton.textContent = "Ask Dom!";
+        } else {
+          messageElement.textContent += "Error getting response from server. Refresh the page and try again.";
+          scrollToBottom();
+          receiving = false;
+          sendButton.textContent = "Ask Dom!";
+        }
+      };
+    }
+
+    // Send message
+    sendButton.addEventListener("click", () => {
+      if (!receiving && messageInput.value.trim() !== "") {
+        const messageText = messageInput.value.trim();
+        messageInput.value = "";
+        appendMessage(messageText, "user");
+        chatHistory.push({ type: "text", text: messageText, sender: "user" });
+        localStorage.setItem("chatHistory", JSON.stringify(chatHistory));
+
+        connectWebSocket(messageText, false);
+      } else if (receiving && websocket) {
+        websocket.close(1000);
+        receiving = false;
+        sendButton.textContent = "Ask Dom!";
+      }
+    });
+
+    // Scroll-to-bottom button
+    scrollToBottomButton.addEventListener("click", scrollToBottom);
+    chatbox.addEventListener("scroll", () => {
+      if (chatbox.scrollTop + chatbox.clientHeight < chatbox.scrollHeight - 50) {
+        scrollToBottomButton.classList.remove("hidden");
+      } else {
+        scrollToBottomButton.classList.add("hidden");
+      }
+    });
+
+    // Initial welcome message
+    if (chatHistory.length === 0) {
+      connectWebSocket("", true);
+    }
+  </script>
+</body>
+</html>
